@@ -25,7 +25,16 @@ source-repository head
 
 library
   exposed-modules:
+      Chapter10Exercises
+      Derivative
+      Integration
+      Kinematics
       Lib
+      Newton2
+      Projectile
+      SimplePlot
+      SimpleVec
+      Types
   other-modules:
       Paths_learn_physics
   hs-source-dirs:
