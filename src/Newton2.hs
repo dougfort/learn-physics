@@ -6,7 +6,6 @@ import Graphics.Gnuplot.Simple
 
 import Integration
 import Types
-import Data.Tuple (fst)
 
 type Mass     = R
 type Time     = R
@@ -149,3 +148,31 @@ statesTV :: R                               -- time step
 statesTV dt m tv0 fs
     = iterate (updateTV dt m fs) tv0
             
+velocityFtv :: R                            -- time step
+            -> Mass
+            -> (Time, Velocity)             -- initial state
+            -> [(Time,Velocity) -> Force]   -- list of force funcs
+            -> Time -> Velocity             -- velocity function            
+velocityFtv dt m tv0 fs t
+    = let numSteps = abs $ round (t / dt)
+      in snd $ statesTV dt m tv0 fs !! numSteps
+
+pedalCoastAir :: [(Time, Velocity)]
+pedalCoastAir = statesTV 0.1 20 (0, 0)
+                [\(t, _) -> pedalCoast t
+                ,\(_, v) -> fAir 2 1.225 0.5 v]
+
+pedalCoastAirGraph :: IO ()
+pedalCoastAirGraph
+    = plotPath [Title "Pedalling anf coasting with Air"
+               ,XLabel "Time (s)"
+               ,YLabel "Velocity of Bike (m/s)"
+               ,PNG "pedalCoastAirGraph.png"
+               ,Key Nothing
+               ] (takeWhile (\ (t, _) -> t <= 100)
+               pedalCoastAir)
+
+pedalCoastAir2 :: Time -> Velocity
+pedalCoastAir2 = velocityFtv 0.1 20 (0, 0)
+                 [\(t, _) -> pedalCoast t
+                 ,\(_, v) -> fAir 2 1.225 0.5 v]
