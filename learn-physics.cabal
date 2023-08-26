@@ -30,6 +30,7 @@ library
       Integration
       Kinematics
       Lib
+      Mechanics1D
       Newton2
       Projectile
       SimplePlot
