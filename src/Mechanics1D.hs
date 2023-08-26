@@ -4,6 +4,7 @@
 
 module Mechanics1D where
 
+import Graphics.Gnuplot.Simple
 import Newton2 (fAir)
 import Types (R)
 
@@ -37,7 +38,7 @@ euler1D ::
   (State1D -> State1D) --state update function
 euler1D dt deriv (t0, x0, v0) =
   let (_, _, dvdt) = deriv (t0, x0, v0)
-      t1 = t0 * dt
+      t1 = t0 + dt
       x1 = x0 + v0 * dt
       v1 = v0 + dvdt * dt
    in (t1, x1, v1)
@@ -99,3 +100,72 @@ positionFtxv dt m txv0 fs = position1D (statesTXV dt m txv0 fs)
 
 springForce :: R -> State1D -> Force
 springForce k (_, x0, _) = -k * x0
+
+dampedHOForces :: [State1D -> Force]
+dampedHOForces =
+  [ springForce 0.8,
+    \(_, _, v0) -> fAir 2 1.225 (pi * 0.02 ** 2) v0,
+    \_ -> -0.0027 * 9.80665
+  ]
+
+dampedHOStates :: [State1D]
+dampedHOStates = statesTXV 0.001 0.0027 (0.0, 0.1, 0.0) dampedHOForces
+
+dampedHOGraph :: IO ()
+dampedHOGraph =
+  plotPath
+    [ Title "Ping Pong Ball on a Slinky",
+      XLabel "Time (s)",
+      YLabel "Position (m)",
+      PNG "dho.png",
+      Key Nothing
+    ]
+    [(t, x) | (t, x, _) <- take 3000 dampedHOStates]
+
+pingpongPosition :: Time -> Velocity
+pingpongPosition = positionFtxv 0.001 0.0027 (0, 0.1, 0) dampedHOForces
+
+dampedHOGraph2 :: IO ()
+dampedHOGraph2 =
+  plotFunc
+    [ Title "Ping Pong Ball on a Slinky",
+      XLabel "Time (s)",
+      YLabel "Position (m)",
+      PNG "dho1.png",
+      Key Nothing
+    ]
+    [0, 0.01 .. 3]
+    pingpongPosition
+
+pingpongVelocity :: Time -> Velocity
+pingpongVelocity = velocityFtxv 0.001 0.0027 (0, 0.1, 0) dampedHOForces
+
+dampedHOGraph3 :: IO ()
+dampedHOGraph3 =
+  plotFunc
+    [ Title "Ping Pong Ball on a Slinky",
+      XLabel "Time (s)",
+      YLabel "Velocity (m/s)",
+      PNG "dho2.png",
+      Key Nothing
+    ]
+    [0, 0.01 .. 3]
+    pingpongVelocity
+
+eulerCromer1D ::
+  R -> -- time step dt
+  (State1D -> (R, R, R)) -> -- differential equation
+  (State1D -> State1D) -- state update function
+eulerCromer1D dt deriv (t0, x0, v0) =
+  let (_, _, dvdt) = deriv (t0, x0, v0)
+      t1 = t0 + dt
+      x1 = x0 + v1 * dt
+      v1 = v0 + dvdt * dt
+   in (t1, x1, v1)
+
+updateTXVEC ::
+  R -> -- time interval dt
+  Mass ->
+  [State1D -> Force] -> -- list of force funcs
+  (State1D -> State1D) -- state update func
+updateTXVEC dt m fs = eulerCromer1D dt (newtonSecond1D m fs)
