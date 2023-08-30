@@ -78,6 +78,33 @@ data DParticleState = DParticleState
   }
   deriving (Show)
 
+instance RealVectorSpace DParticleState where
+  dst1 +++ dst2 =
+    DParticleState
+      { dmdt = dmdt dst1 + dmdt dst2,
+        dqdt = dqdt dst1 + dqdt dst2,
+        dtdt = dtdt dst1 + dtdt dst2,
+        drdt = drdt dst1 ^+^ drdt dst2,
+        dvdt = dvdt dst1 ^+^ dvdt dst2
+      }
+  scale w dst =
+    DParticleState
+      { dmdt = w * dmdt dst,
+        dqdt = w * dqdt dst,
+        dtdt = w * dtdt dst,
+        drdt = w *^ drdt dst,
+        dvdt = w *^ dvdt dst
+      }
+
+instance Diff ParticleState DParticleState where
+  shift dt dps (ParticleState m q t r v) =
+    ParticleState
+      (m + dmdt dps * dt)
+      (q + dqdt dps * dt)
+      (t + dtdt dps * dt)
+      (r ^+^ drdt dps ^* dt)
+      (v ^+^ dvdt dps ^* dt)
+
 newtonSecondPS :: [OneBodyForce] -> ParticleState -> DParticleState -- difeq
 newtonSecondPS fs st =
   let fNet = sumV [f st | f <- fs]
@@ -114,3 +141,60 @@ airResistance ::
   OneBodyForce
 airResistance drag rho area (ParticleState _m _q _t _r v) =
   (-0.5 * drag * rho * area * magnitude v) *^ v
+
+windForce ::
+  Vec -> -- wind velocity
+  R -> -- drag coefficient
+  R -> -- air density
+  R -> -- cross sectional area of object
+  OneBodyForce
+windForce vWind drag rho area (ParticleState _m _q _t _r v) =
+  let vRel = v ^-^ vWind
+   in (-0.5 * drag * rho * area * magnitude vRel) *^ vRel
+
+uniformLorentzForce ::
+  Vec -> -- E
+  Vec -> -- B
+  OneBodyForce
+uniformLorentzForce vE vB (ParticleState _m q _t _r v) =
+  q *^ (vE ^+^ v >< vB)
+
+eulerCromerPS ::
+  TimeStep -> -- dt for stepping
+  NumericalMethod ParticleState DParticleState
+eulerCromerPS dt deriv st =
+  let t = time st
+      r = posVec st
+      v = velocity st
+      dst = deriv st
+      acc = dvdt dst
+      v' = v ^+^ acc ^* dt
+   in st
+        { time = t + dt,
+          posVec = r ^+^ v' ^* dt,
+          velocity = v ^+^ acc ^* dt
+        }
+
+statesPS ::
+  NumericalMethod ParticleState DParticleState ->
+  [OneBodyForce] ->
+  (ParticleState -> [ParticleState])
+statesPS method = iterate . method . newtonSecondPS
+
+updatePS ::
+  NumericalMethod ParticleState DParticleState ->
+  [OneBodyForce] ->
+  (ParticleState -> ParticleState)
+updatePS method = method . newtonSecondPS
+
+positionPS ::
+  NumericalMethod ParticleState DParticleState ->
+  [OneBodyForce] -> -- list of force funcs
+  ParticleState -> -- initial state
+  (Time -> PosVec) -- position function
+positionPS method fs st t =
+  let states = statesPS method fs st
+      dt = time (states !! 1) - time (states !! 0)
+      numSteps = abs $ round (t / dt)
+      st1 = solver method (newtonSecondPS fs) st !! numSteps
+   in posVec st1
