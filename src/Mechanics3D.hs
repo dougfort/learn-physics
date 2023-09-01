@@ -105,6 +105,12 @@ instance Diff ParticleState DParticleState where
       (r ^+^ drdt dps ^* dt)
       (v ^+^ dvdt dps ^* dt)
 
+class HasTime s where
+  timeOf :: s -> Time
+
+instance HasTime ParticleState where
+  timeOf = time
+
 newtonSecondPS :: [OneBodyForce] -> ParticleState -> DParticleState -- difeq
 newtonSecondPS fs st =
   let fNet = sumV [f st | f <- fs]
@@ -198,3 +204,55 @@ positionPS method fs st t =
       numSteps = abs $ round (t / dt)
       st1 = solver method (newtonSecondPS fs) st !! numSteps
    in posVec st1
+
+simulateGloss ::
+  R -> -- time scale factor
+  Int -> -- animation rate
+  s -> -- initial state
+  (s -> G.Picture) ->
+  (TimeStep -> s -> s) ->
+  IO ()
+simulateGloss tsFactor rate initialState picFunc updateFunc =
+  G.simulate
+    (G.InWindow "" (1000, 750) (10, 10))
+    G.black
+    rate
+    initialState
+    picFunc
+    (\_ -> updateFunc . (* tsFactor) . realToFrac)
+
+{- simulateVis ::
+  (HasTime s -> R) -> -- time scale factor
+  Int -> -- animation rate
+  s -> -- initial state
+  (s -> V.VisObject R) ->
+  (TimeStep -> s -> s) ->
+  IO ()
+simulateVis tsFactor rate initialState picFunc updateFunc =
+  let visUpdateFunc ta st = let dtp = tsFactor * realToFrac ta - timeOf st in updateFunc dtp st
+   in V.simulate
+        V.defaultOpts
+        (1 / fromIntegral rate)
+        initialState
+        (orint . picFunc)
+        vosUpdateFunc
+ -}
+
+halleyUpdate ::
+  TimeStep ->
+  (ParticleState -> ParticleState)
+halleyUpdate dt =
+  updatePS (eulerCromerPS dt) [sunGravity]
+
+halleyInitial :: ParticleState
+halleyInitial =
+  ParticleState
+    { mass = 2.2e14,
+      charge = 0,
+      time = 0,
+      posVec = 8.766e10 *^ iHat,
+      velocity = 54569 *^ jHat
+    }
+
+disk :: Float -> G.Picture
+disk radius = G.ThickCircle (radius / 2) radius
