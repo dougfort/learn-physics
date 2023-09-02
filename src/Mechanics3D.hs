@@ -256,3 +256,63 @@ halleyInitial =
 
 disk :: Float -> G.Picture
 disk radius = G.ThickCircle (radius / 2) radius
+
+baseballForces :: [OneBodyForce]
+baseballForces =
+  let area = pi * (0.074 / 2) ** 2
+   in [earthSurfaceGravity, airResistance 0.3 1.225 area]
+
+baseballTrajectory ::
+  R -> --time step
+  R -> -- initial speed
+  R -> -- launch angle in degrees
+  [(R, R)] -- (y, z) pairs
+baseballTrajectory dt v0 thetaDeg =
+  let thetaRad = thetaDeg * pi / 180
+      vy0 = v0 * cos thetaRad
+      vz0 = v0 * sin thetaRad
+      initialState =
+        ParticleState
+          { mass = 0.145,
+            charge = 0,
+            time = 0,
+            posVec = zeroV,
+            velocity = vec 0 vy0 vz0
+          }
+   in trajectory $
+        zGEO $
+          statesPS (eulerCromerPS dt) baseballForces initialState
+
+zGEO :: [ParticleState] -> [ParticleState]
+zGEO = takeWhile (\(ParticleState _ _ _ r _) -> zComp r >= 0)
+
+trajectory :: [ParticleState] -> [(R, R)]
+trajectory sts = [(yComp r, zComp r) | ParticleState _ _ _ r _ <- sts]
+
+baseballRange ::
+  R -> -- time step
+  R -> -- initial speed
+  R -> -- launch angle in degrees
+  R -- range
+baseballRange dt v0 thetaDeg =
+  let (y, _) = last $ baseballTrajectory dt v0 thetaDeg
+   in y
+
+baseballRangeGraph :: IO ()
+baseballRangeGraph =
+  plotFunc
+    [ Title "Range for baseball hit at 45 m/s",
+      XLabel "Angle above horizontal (degrees)",
+      YLabel "Horizontal range (m)",
+      PNG "baseballrange.png",
+      Key Nothing
+    ]
+    [10, 11 .. 80]
+    $ baseballRange 0.01 45
+
+bestAngle :: (R, R)
+bestAngle =
+  maximum
+    [ (baseballRange 0.01 45 thetaDeg, thetaDeg)
+      | thetaDeg <- [30, 31 .. 60]
+    ]
