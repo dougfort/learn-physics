@@ -316,3 +316,26 @@ bestAngle =
     [ (baseballRange 0.01 45 thetaDeg, thetaDeg)
       | thetaDeg <- [30, 31 .. 60]
     ]
+
+projectileUpdate ::
+  TimeStep ->
+  ParticleState -> -- old state
+  ParticleState -- new state
+projectileUpdate dt =
+  updatePS (eulerCromerPS dt) baseballForces
+
+projectileInitial :: [String] -> ParticleState
+projectileInitial [] = error "Please supply initial speed and angle"
+projectileInitial [_] = error "Please supply initial speed and angle"
+projectileInitial (_ : _ : _ : _) = error "First argument is speed. Second argument is degrees."
+projectileInitial (arg1 : arg2 : _) =
+  let v0 = read arg1 :: R -- initial speed m/s
+      angleDeg = read arg2 :: R -- initial angle degrees
+      theta = angleDeg * pi / 180 -- in radians
+   in defaultParticleState
+        { mass = 0.145,
+          charge = 0,
+          time = 0,
+          posVec = zeroV,
+          velocity = vec 0 (v0 * cos theta) (v0 * sin theta)
+        }
