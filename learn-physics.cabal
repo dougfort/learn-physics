@@ -34,6 +34,7 @@ library
       Lib
       Mechanics1D
       Mechanics3D
+      MultipleObjects
       Newton2
       Projectile
       SimplePlot
