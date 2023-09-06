@@ -339,3 +339,88 @@ projectileInitial (arg1 : arg2 : _) =
           posVec = zeroV,
           velocity = vec 0 (v0 * cos theta) (v0 * sin theta)
         }
+
+relativityPS ::
+  [OneBodyForce] ->
+  (ParticleState -> DParticleState) -- a differential equation
+relativityPS fs st =
+  let fNet = sumV [f st | f <- fs]
+      c = 299792458 -- m/s
+      m = mass st
+      v = velocity st
+      u = v ^/ c
+      acc = sqrt (1 - u <.> u) *^ (fNet ^-^ (fNet <.> u) *^ u) ^/ m
+   in DParticleState
+        { dmdt = 0,
+          dqdt = 0,
+          dtdt = 1,
+          drdt = v,
+          dvdt = acc
+        }
+
+constantForcePlot :: IO ()
+constantForcePlot =
+  let year = 365.25 * 24 * 60 * 60 -- seconds
+      c = 299792458 -- m/s
+      method = rungeKutta4 1000
+      forces = [const (10 *^ iHat)]
+      initialState = defaultParticleState {mass = 1}
+      newtonStates = solver method (newtonSecondPS forces) initialState
+      relativityStates = solver method (relativityPS forces) initialState
+      newtonTVs =
+        [ (time st / year, xComp (velocity st) / c)
+          | st <- takeWhile tle1yr newtonStates
+        ]
+      relativityTVs =
+        [ (time st / year, xComp (velocity st) / c)
+          | st <- takeWhile tle1yr relativityStates
+        ]
+   in plotPaths
+        [ Key Nothing,
+          Title "Response to a constant force",
+          XLabel "Time (years)",
+          YLabel "Velocity (multiples of x)",
+          PNG "constantforce.PNG",
+          customLabel (0.1, 1) "mass = 1 kg",
+          customLabel (0.1, 0.9) "force = 10 N",
+          customLabel (0.5, 0.7) "Newtonian",
+          customLabel (0.8, 0.6) "relativistic"
+        ]
+        [newtonTVs, relativityTVs]
+
+customLabel :: (R, R) -> String -> Attribute
+customLabel (x, y) label =
+  Custom "label" ["\"" ++ label ++ "\"" ++ " at " ++ show x ++ "," ++ show y]
+
+tle1yr :: ParticleState -> Bool
+tle1yr st =
+  let year = 365.25 * 24 * 60 * 60
+   in time st <= year
+
+circularPlot :: IO ()
+circularPlot =
+  let c = 299792458 -- m/s
+      method = rungeKutta4 1e-9
+      forces = [uniformLorentzForce zeroV kHat] -- 1 T
+      initialState =
+        defaultParticleState
+          { mass = 1.672621898e-27,
+            charge = 1.602176634e-19,
+            velocity = 0.8 *^ c *^ jHat
+          }
+      newtonStates = solver method (newtonSecondPS forces) initialState
+      relativityStates = solver method (relativityPS forces) initialState
+      newtonXYs = [(xComp (posVec st), yComp (posVec st)) | st <- take 100 newtonStates]
+      relativityXYs = [(xComp (posVec st), yComp (posVec st)) | st <- take 120 relativityStates]
+   in plotPaths
+        [ Key Nothing,
+          Aspect (Ratio 1),
+          Title "Proton in a 1-T magnetic field",
+          XLabel "x (m)",
+          YLabel "y (m)",
+          PNG "circularComp.png",
+          customLabel (0.5, 4.5) "v = 0.8 c",
+          customLabel (2.5, 0.0) "Newtonian",
+          customLabel (3.0, 3.5) "relativistic"
+        ]
+        [newtonXYs, relativityXYs]
