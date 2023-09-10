@@ -3,9 +3,11 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
 {-# HLINT ignore "Use newtype instead of data" #-}
+{-# HLINT ignore "Use zipWith" #-}
 
 module MultipleObjects where
 
+import Data.List (zipWith)
 import GHC.Base (undefined)
 import Mechanics1D
   ( Diff (..),
@@ -128,3 +130,54 @@ instance HasTime MultiParticleState where
   timeOf (MPS sts) = time (head sts)
 
 data DMultiParticleState = DMPS [DParticleState] deriving (Show)
+
+instance RealVectorSpace DMultiParticleState where
+  DMPS dsts1 +++ DMPS dsts2 = DMPS $ zipWith (+++) dsts1 dsts2
+  scale w (DMPS dsts) = DMPS $ map (scale w) dsts
+
+instance Diff MultiParticleState DMultiParticleState where
+  shift dt (DMPS dsts) (MPS sts) = MPS $ zipWith (shift dt) dsts sts
+
+newtonSecondMPS ::
+  [Force] ->
+  (MultiParticleState -> DMultiParticleState) -- differential equation
+newtonSecondMPS fs mpst@(MPS sts) =
+  let deriv (n, st) = newtonSecondPS (forcesOn n mpst fs) st
+   in DMPS $ map deriv (zip [0 ..] sts)
+
+forcesOn :: Int -> MultiParticleState -> [Force] -> [OneBodyForce]
+forcesOn n mpst = map (forceOn n mpst)
+
+forceOn :: Int -> MultiParticleState -> Force -> OneBodyForce
+forceOn n _ (ExternalForce n0 fOneBody)
+  | n == n0 = fOneBody
+  | otherwise = const zeroV
+forceOn n (MPS sts) (InternalForce n0 n1 fTwoBody)
+  | n == n0 = oneFromTwo (sts !! n1) fTwoBody -- n1 acts on n0
+  | n == n1 = oneFromTwo (sts !! n0) fTwoBody -- n0 acts on n1
+  | otherwise = const zeroV
+
+eulerCromerMPS ::
+  TimeStep -> -- dt for stepping
+  NumericalMethod MultiParticleState DMultiParticleState
+eulerCromerMPS dt deriv mpst0 =
+  let mpst1 = euler dt deriv mpst0
+      sts0 = particleStates mpst0
+      sts1 = particleStates mpst1
+   in -- now update positions
+      MPS $
+        [ st1 {posVec = posVec st0 ^+^ velocity st1 ^* dt}
+          | (st0, st1) <- zip sts0 sts1
+        ]
+
+updateMPS ::
+  NumericalMethod MultiParticleState DMultiParticleState ->
+  [Force] ->
+  (MultiParticleState -> MultiParticleState)
+updateMPS method = method . newtonSecondMPS
+
+stateMPS ::
+  NumericalMethod MultiParticleState DMultiParticleState ->
+  [Force] ->
+  (MultiParticleState -> [MultiParticleState])
+stateMPS method = iterate . method . newtonSecondMPS
